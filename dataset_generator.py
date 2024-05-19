@@ -18,7 +18,7 @@ def generate_filename(folder:str, id:int, file_extension:str='.png'):
     filename:str = folder + '/000' + str(id) + file_extension
   return filename
 
-def combine_images(id:int, background:MatLike, foreground:MatLike, size:float, offset: tuple[int, int], angle:float, motion:int) -> MatLike:
+def combine_images(id:int, background:MatLike, foreground:MatLike, size_scaling:tuple[float, float], offset: tuple[int, int], angle:float, motion:int) -> MatLike:
   """
   Combines two images, accounting for their transparent qualities.
 
@@ -31,7 +31,11 @@ def combine_images(id:int, background:MatLike, foreground:MatLike, size:float, o
   if foreground is None:
     raise Exception('Foreground not found')
 
-  # Compress the foreground (i.e. bottle) to fit into the background
+  # Dynamically resize the foreground relative to the h_offset
+  max_size, min_h_offset = size_scaling
+  size:float = (-max_size/(min_h_offset-1)) * offset[1] + ((min_h_offset*max_size)/(min_h_offset-1))
+  if size <= 0:
+    size = 0.001
   foreground = cv.resize(foreground, None, fx=size, fy=size)
 
   # Apply rotations to the foreground
@@ -48,16 +52,16 @@ def combine_images(id:int, background:MatLike, foreground:MatLike, size:float, o
     w_offset = len(background[0]) - len(foreground[0])
   if h_offset < 0 or w_offset < 0:
     raise Exception('Foreground does not fit in background')
-  
+
   # Generate bounding box
-  generate_bounding_box(
-    id=id,
-    background=background, 
-    foreground=foreground, 
-    class_id=0, 
-    w_offset=w_offset / len(background[0]), 
-    h_offset=h_offset / len(background)
-    )
+  # generate_bounding_box(
+  #   id=id,
+  #   background=background, 
+  #   foreground=foreground, 
+  #   class_id=0, 
+  #   w_offset=w_offset / len(background[0]), 
+  #   h_offset=h_offset / len(background)
+  #   )
 
   # Make sure both images have alpha channels
   if not (has_alpha_channel(background) and has_alpha_channel(foreground)):
@@ -152,7 +156,7 @@ def main() -> None:
   Generates a single image.
   """
   background_filename:str = generate_filename(folder='background', id=0)
-  foreground_filename:str = generate_filename(folder='hammer', id=14)
+  foreground_filename:str = generate_filename(folder='hammer', id=2)
   background:MatLike = cv.imread(background_filename, cv.IMREAD_UNCHANGED)
   foreground:MatLike = cv.imread(foreground_filename, cv.IMREAD_UNCHANGED)
 
@@ -160,10 +164,10 @@ def main() -> None:
     id=0,
     background=background, 
     foreground=foreground, 
-    size=0.05, # Normalised to foreground resolution
-    offset=(0.4, 0.6), # Normalised to background width and height
+    size_scaling=(0.1, 0.5), # (max_size, min_h_offset)
+    offset=(0.4, 0.5), # (x, y); Normalised to background width and height
     angle=0,
-    motion=10
+    motion=0
     )
   composite_filename:str = generate_filename(folder='synthetic_dataset', id=0)
   cv.imwrite(composite_filename, composite)
@@ -173,6 +177,7 @@ def generate_images(object_folders:list=['bottle'], background_variants:int=1, f
   Generates o*b*f*x*y*a*m unique images to use as a synthetic dataset for YOLO model training.
   """
   id:int = 0
+  max_size:float = 0.2
   # Get background
   for b in range(background_variants):
     background_filename:str = generate_filename(folder='background', id=b)
@@ -202,24 +207,24 @@ def generate_images(object_folders:list=['bottle'], background_variants:int=1, f
                   id=id,
                   background=background, 
                   foreground=foreground, 
-                  size=0.1, # Normalised to foreground resolution
+                  size_scaling=(max_size, min_h_offset), 
                   offset=(x, y), # Normalised to background width and height
                   angle=a,
-                  motion=m
+                  motion=0
                   )
                 composite_filename:str = generate_filename(folder='synthetic_dataset', id=id)
                 cv.imwrite(composite_filename, composite)
                 id += 1
 
 if __name__=="__main__":
-  main()
-  # random.seed(3)
-  # generate_images(
-  #   object_folders=['bottle', 'hammer'],
-  #   background_variants=2,
-  #   foreground_variants=2,
-  #   x_variants=2,
-  #   y_variants=1,
-  #   a_variants=1,
-  #   m_variants=1
-  # )
+  # main()
+  random.seed(3)
+  generate_images(
+    object_folders=['bottle', 'hammer'],
+    background_variants=1,
+    foreground_variants=1,
+    x_variants=1,
+    y_variants=10,
+    a_variants=1,
+    m_variants=1
+  )
