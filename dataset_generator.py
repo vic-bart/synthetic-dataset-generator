@@ -72,14 +72,14 @@ def combine_images(id:int, background:MatLike, foreground:MatLike, size_scaling:
     raise Exception('Foreground does not fit in background')
 
   # Generate bounding box
-  # generate_bounding_box(
-  #   id=id,
-  #   background=background, 
-  #   foreground=foreground, 
-  #   class_id=0, 
-  #   w_offset=w_offset / len(background[0]), 
-  #   h_offset=h_offset / len(background)
-  #   )
+  generate_bounding_box(
+    id=id,
+    background=background, 
+    foreground=foreground, 
+    class_id=0, 
+    w_offset=w_offset / len(background[0]), 
+    h_offset=h_offset / len(background)
+    )
 
   # Make sure both images have alpha channels
   if not (has_alpha_channel(background) and has_alpha_channel(foreground)):
