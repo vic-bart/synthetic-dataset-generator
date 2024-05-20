@@ -18,7 +18,7 @@ def generate_filename(folder:str, id:int, file_extension:str='.png'):
     filename:str = folder + '/000' + str(id) + file_extension
   return filename
 
-def combine_images(id:int, background:MatLike, foreground:MatLike, size_scaling:tuple[float, float], offset: tuple[int, int], angle:float, motion:int) -> MatLike:
+def combine_images(id:int, background:MatLike, foreground:MatLike, size_scaling:tuple[float, float, float], offset: tuple[int, int], angle:float, motion:int) -> MatLike:
   """
   Combines two images, accounting for their transparent qualities.
 
@@ -30,17 +30,35 @@ def combine_images(id:int, background:MatLike, foreground:MatLike, size_scaling:
     raise Exception('Background not found')
   if foreground is None:
     raise Exception('Foreground not found')
-
+  
+  # Check if inputs are valid (WIP)
+  min_size, max_size, min_h_offset = size_scaling
+  if (min_h_offset < 0) or (min_h_offset >= 1):
+    raise Exception('Invalid min_h_offset, 0 <= min_h_offset < 1')
+  if (min_size < 0) or (min_size > 1):
+    raise Exception('Invalid min_size, 0 <= min_size <= max_size')
+  if (max_size < 0) or (max_size > 1):
+    raise Exception('Invalid max_size, 0 <= min_size <= max_size')
+  if min_size > max_size:
+    raise Exception('min_size cannot be greater than max_size')
+  if (offset[0] < 0) or (offset[0] > 1):
+    raise Exception('Invalid x_offset, 0 < x_offset < 1')
+  if (offset[1] < 0) or (offset[1] > 1):
+    raise Exception('Invalid y_offset, 0 < y_offset < 1')
+  # Cap the h_offset by the min_h_offset
+  if offset[1] < min_h_offset:
+    raise Exception('h_offset cannot be less than min_h_offset')
+  
   # Dynamically resize the foreground relative to the h_offset
-  max_size, min_h_offset = size_scaling
-  size:float = (-max_size/(min_h_offset-1)) * offset[1] + ((min_h_offset*max_size)/(min_h_offset-1))
-  if size <= 0:
-    size = 0.001
+  size:float = ((min_size-max_size)/(min_h_offset-1))*offset[1] + ((max_size*min_h_offset-min_size)/(min_h_offset-1))
+  # cv::resize raises errors when the size is less than ~0.001, so I've set a hard limit to 0.01
+  if size < 0.01:
+    size = 0.01
   foreground = cv.resize(foreground, None, fx=size, fy=size)
 
   # Apply rotations to the foreground
   foreground = rotate_image(foreground, angle)
-  
+
   # Denormalise translation offsets from 0-1, to 0-width and 0-height
   w_offset:int = int(offset[0] * len(background[0]))
   h_offset:int = int(offset[1] * len(background))
@@ -143,6 +161,10 @@ def rotate_image(img:MatLike, angle:float) -> MatLike:
   return img
 
 def generate_bounding_box(id:int, background:MatLike, foreground:MatLike, class_id:int, w_offset:float, h_offset:float) -> None:
+  """
+  Generates a bounding box .txt file according to YOLOv8 PyTorch TXT format.
+  See here: https://roboflow.com/formats/yolov8-pytorch-txt
+  """
   width:float = len(foreground[0]) / len(background[0])
   center_x:float = w_offset + width/2
   height:float = len(foreground) / len(background)
@@ -156,61 +178,65 @@ def main() -> None:
   Generates a single image.
   """
   background_filename:str = generate_filename(folder='background', id=0)
-  foreground_filename:str = generate_filename(folder='hammer', id=2)
   background:MatLike = cv.imread(background_filename, cv.IMREAD_UNCHANGED)
+  foreground_filename:str = generate_filename(folder='bottle', id=0)
   foreground:MatLike = cv.imread(foreground_filename, cv.IMREAD_UNCHANGED)
 
   composite:MatLike = combine_images(
     id=0,
     background=background, 
     foreground=foreground, 
-    size_scaling=(0.1, 0.5), # (max_size, min_h_offset)
-    offset=(0.4, 0.5), # (x, y); Normalised to background width and height
+    size_scaling=(0.1, 0.1, 0.0), # (min_size, max_size, min_h_offset)
+    offset=(1.0, 1.0), # (x, y); Normalised to background width and height
     angle=0,
     motion=0
     )
   composite_filename:str = generate_filename(folder='synthetic_dataset', id=0)
   cv.imwrite(composite_filename, composite)
 
-def generate_images(object_folders:list=['bottle'], background_variants:int=1, foreground_variants:int=1, x_variants:int=1, y_variants:int=1, a_variants:int=1, m_variants:int=1) -> None:
+def generate_images(object_folders:list[str], object_transformations:list[tuple[float, float]], background_variants:int, foreground_variants:int, x_variants:int, y_variants:int, a_variants:int, m_variants:int, min_h_offset:float, max_blur:int) -> None:
   """
-  Generates o*b*f*x*y*a*m unique images to use as a synthetic dataset for YOLO model training.
+  Generates unique images to use as a synthetic dataset for YOLO model training.
   """
   id:int = 0
-  max_size:float = 0.2
+  # Generate random values (note I've done this ahead of time as the nested loop structure regenerated them unintentionally)
+  y_values:list[float] = [random.uniform(min_h_offset, 1) for _ in range(y_variants)]
+  x_values:list[float] = [random.uniform(0, 1) for _ in range(x_variants)]
+  a_values:list[float] = [random.uniform(0, 360) for _ in range(a_variants)]
+  m_values:list[int] = [random.randint(0, max_blur) for _ in range(m_variants)]
   # Get background
   for b in range(background_variants):
     background_filename:str = generate_filename(folder='background', id=b)
     background:MatLike = cv.imread(background_filename, cv.IMREAD_UNCHANGED)
   # Get object
-    for o in object_folders:
+    for o in range(len(object_folders)):
+      min_size:float = object_transformations[o][0]
+      max_size:float = object_transformations[o][1]
   # Get foreground
       for f in range(foreground_variants):
-        foreground_filename:str = generate_filename(folder=o, id=f)
+        foreground_filename:str = generate_filename(folder=object_folders[o], id=f)
         foreground:MatLike = cv.imread(foreground_filename, cv.IMREAD_UNCHANGED)
   # Get height/y offset
         for y in range(y_variants):
-          min_h_offset = 0.2 # Minimum height offset from the top (normalised to background height), for the foreground
-          y:float = random.uniform(min_h_offset, 1)
+          y_offset:float = y_values[y]
   # Get width/x offset
           for x in range(x_variants):
-            x:float = random.uniform(0, 1)
+            x_offset:float = x_values[x]
   # Get angle/a offset
             for a in range(a_variants):
-              a:float = random.uniform(0, 360)
+              angle:float = a_values[a]
   # Get angle/a offset
               for m in range(m_variants):
-                max_blur:int = 30
-                m = random.randint(0, max_blur)
+                motion:int = m_values[m]
   # Generate composite image
                 composite:MatLike = combine_images(
                   id=id,
                   background=background, 
                   foreground=foreground, 
-                  size_scaling=(max_size, min_h_offset), 
-                  offset=(x, y), # Normalised to background width and height
-                  angle=a,
-                  motion=0
+                  size_scaling=(min_size, max_size, min_h_offset), 
+                  offset=(x_offset, y_offset), # Normalised to background width and height
+                  angle=angle,
+                  motion=motion
                   )
                 composite_filename:str = generate_filename(folder='synthetic_dataset', id=id)
                 cv.imwrite(composite_filename, composite)
@@ -218,13 +244,15 @@ def generate_images(object_folders:list=['bottle'], background_variants:int=1, f
 
 if __name__=="__main__":
   # main()
-  random.seed(3)
   generate_images(
-    object_folders=['bottle', 'hammer'],
+    object_folders=['bottle','hammer'],
+    object_transformations=[(0.1, 0.5), (0.01, 0.07)], # (min_size, max_size)
     background_variants=1,
     foreground_variants=1,
-    x_variants=1,
-    y_variants=10,
-    a_variants=1,
-    m_variants=1
+    x_variants=3,
+    y_variants=3,
+    a_variants=3,
+    m_variants=3,
+    min_h_offset=0.2, # Minimum height offset from the top (normalised to background height), for the foreground
+    max_blur=30 # Generally set to <30
   )
