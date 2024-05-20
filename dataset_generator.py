@@ -78,7 +78,8 @@ def combine_images(id:int, background:MatLike, foreground:MatLike, size_scaling:
     foreground=foreground, 
     class_id=0, 
     w_offset=w_offset / len(background[0]), 
-    h_offset=h_offset / len(background)
+    h_offset=h_offset / len(background),
+    size=1
     )
 
   # Make sure both images have alpha channels
@@ -160,10 +161,11 @@ def rotate_image(img:MatLike, angle:float) -> MatLike:
   img = cv.warpAffine(img, rot_mat, (b_w, b_h), flags=cv.INTER_LINEAR)
   return img
 
-def generate_bounding_box(id:int, background:MatLike, foreground:MatLike, class_id:int, w_offset:float, h_offset:float) -> None:
+def generate_bounding_box(id:int, background:MatLike, foreground:MatLike, class_id:int, w_offset:float, h_offset:float, size:float) -> None:
   """
   Generates a bounding box .txt file according to YOLOv8 PyTorch TXT format.
   See here: https://roboflow.com/formats/yolov8-pytorch-txt
+  'size' is a normalised value (i.e. 0 to 1) that is multiplied against the box's width and height to give it a smaller profile.
   """
   width:float = len(foreground[0]) / len(background[0])
   center_x:float = w_offset + width/2
@@ -171,7 +173,7 @@ def generate_bounding_box(id:int, background:MatLike, foreground:MatLike, class_
   center_y:float = h_offset + height/2
   bounding_box_filename:str = generate_filename('synthetic_dataset', id, '.txt')
   with open(bounding_box_filename, 'w') as bounding_box:
-    bounding_box.write(f'{class_id} {center_x} {center_y} {width} {height}')
+    bounding_box.write(f'{class_id} {center_x} {center_y} {width*size} {height*size}')
 
 def main() -> None:
   """
