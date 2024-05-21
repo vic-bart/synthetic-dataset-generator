@@ -202,7 +202,7 @@ def generate_images(object_folders:list[str], object_transformations:list[tuple[
   """
   id:int = 0
   # Generate random values (note I've done this ahead of time as the nested loop structure regenerated them unintentionally)
-  b_values:list[int] = [random.randint(0, 8) for _ in range(background_variants)]
+  b_values:list[int] = [random.randint(0, 7) for _ in range(background_variants)]
   f_values:list[int] = [
     [random.randint(0, 13) for _ in range(foreground_variants)], 
     [random.randint(0, 16) for _ in range(foreground_variants)]
@@ -263,6 +263,6 @@ if __name__=="__main__":
     a_variants=1,
     m_variants=1,
     min_h_offset=0.2, # Minimum height offset from the top (normalised to background height), for the foreground
-    max_blur=20, # Generally set to <20
+    max_blur=0, # Generally set to <20
     bounding_box_size=0.9 # Normalised from 0 to 1
   )
