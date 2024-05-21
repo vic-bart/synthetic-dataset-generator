@@ -18,7 +18,7 @@ def generate_filename(folder:str, id:int, file_extension:str='.png'):
     filename:str = folder + '/000' + str(id) + file_extension
   return filename
 
-def combine_images(id:int, background:MatLike, foreground:MatLike, size_scaling:tuple[float, float, float], offset: tuple[int, int], angle:float, motion:int) -> MatLike:
+def combine_images(id:int, background:MatLike, foreground:MatLike, size_scaling:tuple[float, float, float], offset: tuple[int, int], angle:float, motion:int, bounding_box_size:float) -> MatLike:
   """
   Combines two images, accounting for their transparent qualities.
 
@@ -79,7 +79,7 @@ def combine_images(id:int, background:MatLike, foreground:MatLike, size_scaling:
     class_id=0, 
     w_offset=w_offset / len(background[0]), 
     h_offset=h_offset / len(background),
-    size=1
+    size=bounding_box_size
     )
 
   # Make sure both images have alpha channels
@@ -196,7 +196,7 @@ def main() -> None:
   composite_filename:str = generate_filename(folder='synthetic_dataset', id=0)
   cv.imwrite(composite_filename, composite)
 
-def generate_images(object_folders:list[str], object_transformations:list[tuple[float, float]], background_variants:int, foreground_variants:int, x_variants:int, y_variants:int, a_variants:int, m_variants:int, min_h_offset:float, max_blur:int) -> None:
+def generate_images(object_folders:list[str], object_transformations:list[tuple[float, float]], background_variants:int, foreground_variants:int, x_variants:int, y_variants:int, a_variants:int, m_variants:int, min_h_offset:float, max_blur:int, bounding_box_size:float) -> None:
   """
   Generates unique images to use as a synthetic dataset for YOLO model training.
   """
@@ -238,7 +238,8 @@ def generate_images(object_folders:list[str], object_transformations:list[tuple[
                   size_scaling=(min_size, max_size, min_h_offset), 
                   offset=(x_offset, y_offset), # Normalised to background width and height
                   angle=angle,
-                  motion=motion
+                  motion=motion,
+                  bounding_box_size=bounding_box_size
                   )
                 composite_filename:str = generate_filename(folder='synthetic_dataset', id=id)
                 cv.imwrite(composite_filename, composite)
@@ -251,10 +252,11 @@ if __name__=="__main__":
     object_transformations=[(0.1, 0.5), (0.01, 0.07)], # (min_size, max_size)
     background_variants=1,
     foreground_variants=1,
-    x_variants=3,
-    y_variants=3,
-    a_variants=3,
-    m_variants=3,
+    x_variants=1,
+    y_variants=1,
+    a_variants=1,
+    m_variants=1,
     min_h_offset=0.2, # Minimum height offset from the top (normalised to background height), for the foreground
-    max_blur=30 # Generally set to <30
+    max_blur=20, # Generally set to <30
+    bounding_box_size=0.9 # Normalised from 0 to 1
   )
