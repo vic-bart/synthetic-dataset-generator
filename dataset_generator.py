@@ -18,7 +18,7 @@ def generate_filename(folder:str, id:int, file_extension:str='.png'):
     filename:str = folder + '/000' + str(id) + file_extension
   return filename
 
-def combine_images(id:int, background:MatLike, foreground:MatLike, size_scaling:tuple[float, float, float], offset: tuple[int, int], angle:float, motion:int, bounding_box_size:float) -> MatLike:
+def combine_images(background:MatLike, foreground:MatLike, size_scaling:tuple[float, float, float], offset: tuple[int, int], angle:float, motion:int, bounding_box:tuple[int, int, float]) -> MatLike:
   """
   Combines two images, accounting for their transparent qualities.
 
@@ -73,13 +73,13 @@ def combine_images(id:int, background:MatLike, foreground:MatLike, size_scaling:
 
   # Generate bounding box
   generate_bounding_box(
-    id=id,
+    id=bounding_box[0],
     background=background, 
     foreground=foreground, 
-    class_id=0, 
+    class_id=bounding_box[1],
     w_offset=w_offset / len(background[0]), 
     h_offset=h_offset / len(background),
-    size=bounding_box_size
+    size=bounding_box[2]
     )
 
   # Make sure both images have alpha channels
@@ -185,13 +185,13 @@ def main() -> None:
   foreground:MatLike = cv.imread(foreground_filename, cv.IMREAD_UNCHANGED)
 
   composite:MatLike = combine_images(
-    id=0,
     background=background, 
     foreground=foreground, 
     size_scaling=(0.1, 0.1, 0.0), # (min_size, max_size, min_h_offset)
     offset=(1.0, 1.0), # (x, y); Normalised to background width and height
     angle=0,
-    motion=0
+    motion=0,
+    bounding_box_size=(0, 0, 0.9) # (image_id, class_id, bounding_box_size)
     )
   composite_filename:str = generate_filename(folder='synthetic_dataset', id=0)
   cv.imwrite(composite_filename, composite)
@@ -202,13 +202,19 @@ def generate_images(object_folders:list[str], object_transformations:list[tuple[
   """
   id:int = 0
   # Generate random values (note I've done this ahead of time as the nested loop structure regenerated them unintentionally)
+  b_values:list[int] = [random.randint(0, 8) for _ in range(background_variants)]
+  f_values:list[int] = [
+    [random.randint(0, 13) for _ in range(foreground_variants)], 
+    [random.randint(0, 16) for _ in range(foreground_variants)]
+    ]
   y_values:list[float] = [random.uniform(min_h_offset, 1) for _ in range(y_variants)]
   x_values:list[float] = [random.uniform(0, 1) for _ in range(x_variants)]
   a_values:list[float] = [random.uniform(0, 360) for _ in range(a_variants)]
   m_values:list[int] = [random.randint(0, max_blur) for _ in range(m_variants)]
   # Get background
   for b in range(background_variants):
-    background_filename:str = generate_filename(folder='background', id=b)
+    background_id:int = b_values[b]
+    background_filename:str = generate_filename(folder='background', id=background_id)
     background:MatLike = cv.imread(background_filename, cv.IMREAD_UNCHANGED)
   # Get object
     for o in range(len(object_folders)):
@@ -216,7 +222,8 @@ def generate_images(object_folders:list[str], object_transformations:list[tuple[
       max_size:float = object_transformations[o][1]
   # Get foreground
       for f in range(foreground_variants):
-        foreground_filename:str = generate_filename(folder=object_folders[o], id=f)
+        foreground_id:int = f_values[o][f]
+        foreground_filename:str = generate_filename(folder=object_folders[o], id=foreground_id)
         foreground:MatLike = cv.imread(foreground_filename, cv.IMREAD_UNCHANGED)
   # Get height/y offset
         for y in range(y_variants):
@@ -232,14 +239,13 @@ def generate_images(object_folders:list[str], object_transformations:list[tuple[
                 motion:int = m_values[m]
   # Generate composite image
                 composite:MatLike = combine_images(
-                  id=id,
                   background=background, 
                   foreground=foreground, 
                   size_scaling=(min_size, max_size, min_h_offset), 
                   offset=(x_offset, y_offset), # Normalised to background width and height
                   angle=angle,
                   motion=motion,
-                  bounding_box_size=bounding_box_size
+                  bounding_box=(id, o, bounding_box_size) # (image_id, class_id, bounding_box_size)
                   )
                 composite_filename:str = generate_filename(folder='synthetic_dataset', id=id)
                 cv.imwrite(composite_filename, composite)
@@ -248,15 +254,15 @@ def generate_images(object_folders:list[str], object_transformations:list[tuple[
 if __name__=="__main__":
   # main()
   generate_images(
-    object_folders=['bottle','hammer'],
+    object_folders=['bottle','hammer'], # Note that class_id is in the order of this list
     object_transformations=[(0.1, 0.5), (0.01, 0.07)], # (min_size, max_size)
-    background_variants=1,
-    foreground_variants=1,
+    background_variants=2,
+    foreground_variants=2,
     x_variants=1,
     y_variants=1,
     a_variants=1,
     m_variants=1,
     min_h_offset=0.2, # Minimum height offset from the top (normalised to background height), for the foreground
-    max_blur=20, # Generally set to <30
+    max_blur=20, # Generally set to <20
     bounding_box_size=0.9 # Normalised from 0 to 1
   )
